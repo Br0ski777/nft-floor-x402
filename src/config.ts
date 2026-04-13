@@ -41,6 +41,43 @@ Do NOT use for individual token rarity -- use nft_get_token_rarity. Do NOT use f
         },
         required: ["address"],
       },
+      outputSchema: {
+          "type": "object",
+          "properties": {
+            "address": {
+              "type": "string",
+              "description": "Contract address"
+            },
+            "chain": {
+              "type": "string",
+              "description": "Blockchain"
+            },
+            "name": {
+              "type": "string",
+              "description": "Collection name"
+            },
+            "floorPrice": {
+              "type": "number",
+              "description": "Floor price in ETH"
+            },
+            "floorPriceUsd": {
+              "type": "number"
+            },
+            "totalSupply": {
+              "type": "number"
+            },
+            "owners": {
+              "type": "number"
+            },
+            "volume24h": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "address",
+            "chain"
+          ]
+        },
     },
     {
       method: "GET",
@@ -79,6 +116,36 @@ Do NOT use for collection-level stats -- use nft_get_collection_data. Do NOT use
         },
         required: ["address", "tokenId"],
       },
+      outputSchema: {
+          "type": "object",
+          "properties": {
+            "address": {
+              "type": "string"
+            },
+            "tokenId": {
+              "type": "string"
+            },
+            "chain": {
+              "type": "string"
+            },
+            "rarityScore": {
+              "type": "number"
+            },
+            "rarityRank": {
+              "type": "number"
+            },
+            "traits": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            }
+          },
+          "required": [
+            "address",
+            "tokenId"
+          ]
+        },
     },
   ],
 };
