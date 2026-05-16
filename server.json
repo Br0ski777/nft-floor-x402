@@ -12,7 +12,7 @@
   "remotes": [
     {
       "type": "sse",
-      "url": "https://nft-floor-x402-production.up.railway.app/mcp"
+      "url": "https://nft-floor.api.klymax402.com/mcp"
     }
   ]
 }
