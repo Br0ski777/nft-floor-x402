@@ -35,14 +35,26 @@ function setCache(key: string, data: any): void {
   cache.set(key, { data, timestamp: Date.now() });
 }
 
-// ── Chain-specific base URLs ───────────────────────────────────────────
-const RESERVOIR_URLS: Record<string, string> = {
-  ethereum: "https://api.reservoir.tools",
-  base: "https://api-base.reservoir.tools",
+// ── Chain-specific Alchemy NFT API base URLs ───────────────────────────
+// Reservoir (former data source) was fully decommissioned -- reservoir.tools
+// pivoted to an unrelated crosschain-payments product, api.reservoir.tools /
+// api-base.reservoir.tools no longer resolve in DNS (confirmed 2026-07-03).
+// Migrated to Alchemy NFT API v3, which requires an app-scoped API key.
+const ALCHEMY_URLS: Record<string, string> = {
+  ethereum: "https://eth-mainnet.g.alchemy.com/nft/v3",
+  base: "https://base-mainnet.g.alchemy.com/nft/v3",
 };
 
+const SUPPORTED_CHAINS = Object.keys(ALCHEMY_URLS);
+
 function getBaseUrl(chain: string): string {
-  return RESERVOIR_URLS[chain.toLowerCase()] || RESERVOIR_URLS.ethereum;
+  return ALCHEMY_URLS[chain.toLowerCase()] || ALCHEMY_URLS.ethereum;
+}
+
+function getAlchemyKey(): string {
+  const key = process.env.ALCHEMY_API_KEY;
+  if (!key) throw new Error("ALCHEMY_API_KEY not configured");
+  return key;
 }
 
 // ── ETH price (cached) ────────────────────────────────────────────────
@@ -64,15 +76,15 @@ async function fetchEthPrice(): Promise<number | null> {
   }
 }
 
-// ── Reservoir API helpers ──────────────────────────────────────────────
-async function fetchReservoir(baseUrl: string, path: string): Promise<any> {
+// ── Alchemy NFT API helpers ─────────────────────────────────────────────
+async function fetchAlchemy(baseUrl: string, path: string): Promise<any> {
   const url = `${baseUrl}${path}`;
   const resp = await fetch(url, {
     headers: { Accept: "application/json" },
   });
   if (!resp.ok) {
     const text = await resp.text();
-    throw new Error(`Reservoir API ${resp.status}: ${text}`);
+    throw new Error(`Alchemy NFT API ${resp.status}: ${text}`);
   }
   return resp.json();
 }
@@ -83,58 +95,39 @@ async function fetchCollectionData(address: string, chain: string) {
   const cached = getCached<any>(cacheKey, COLLECTION_CACHE_TTL);
   if (cached) return cached;
 
+  const key = getAlchemyKey();
   const baseUrl = getBaseUrl(chain);
-  const [collectionResp, ethPrice] = await Promise.all([
-    fetchReservoir(baseUrl, `/collections/v7?id=${address}`),
+  const [contractResp, floorResp, ownersResp, ethPrice] = await Promise.all([
+    fetchAlchemy(baseUrl, `/${key}/getContractMetadata?contractAddress=${address}`),
+    fetchAlchemy(baseUrl, `/${key}/getFloorPrice?contractAddress=${address}`).catch(() => null),
+    fetchAlchemy(baseUrl, `/${key}/getOwnersForContract?contractAddress=${address}&withTokenBalances=false`).catch(() => null),
     fetchEthPrice(),
   ]);
 
-  const collections = collectionResp.collections || [];
-  if (collections.length === 0) {
+  if (!contractResp || !contractResp.address) {
     throw new Error(`Collection not found: ${address} on ${chain}`);
   }
 
-  const col = collections[0];
-  const floorAsk = col.floorAsk || {};
-  const floorPriceEth = floorAsk.price?.amount?.native ?? null;
-  const volume24h = col.volume?.["1day"] ?? null;
-  const volume7d = col.volume?.["7day"] ?? null;
-  const volume30d = col.volume?.["30day"] ?? null;
-  const topBidEth = col.topBid?.price?.amount?.native ?? null;
+  const openSeaFloor = floorResp?.openSea?.error ? null : floorResp?.openSea?.floorPrice ?? null;
+  const looksRareFloor = floorResp?.looksRare?.error ? null : floorResp?.looksRare?.floorPrice ?? null;
+  const floorPriceEth = openSeaFloor ?? looksRareFloor ?? contractResp.openSeaMetadata?.floorPrice ?? null;
+  const holderCount = ownersResp && !ownersResp.pageKey ? (ownersResp.owners || []).length : null;
 
   const result = {
-    name: col.name || address,
-    slug: col.slug || null,
-    image: col.image || null,
+    name: contractResp.name || contractResp.openSeaMetadata?.collectionName || address,
+    slug: contractResp.openSeaMetadata?.collectionSlug || null,
+    image: contractResp.openSeaMetadata?.imageUrl || null,
     chain,
     contractAddress: address,
     floorPrice: {
       eth: floorPriceEth,
       usd: floorPriceEth && ethPrice ? parseFloat((floorPriceEth * ethPrice).toFixed(2)) : null,
+      sources: { openSea: openSeaFloor, looksRare: looksRareFloor },
     },
-    topBid: {
-      eth: topBidEth,
-      usd: topBidEth && ethPrice ? parseFloat((topBidEth * ethPrice).toFixed(2)) : null,
-    },
-    volume: {
-      "24h_eth": volume24h,
-      "24h_usd": volume24h && ethPrice ? parseFloat((volume24h * ethPrice).toFixed(2)) : null,
-      "7d_eth": volume7d,
-      "30d_eth": volume30d,
-    },
-    totalSupply: col.tokenCount ? parseInt(col.tokenCount) : null,
-    holderCount: col.ownerCount ? parseInt(col.ownerCount) : null,
-    listedCount: col.onSaleCount ? parseInt(col.onSaleCount) : null,
-    listedPercentage:
-      col.onSaleCount && col.tokenCount
-        ? parseFloat(((parseInt(col.onSaleCount) / parseInt(col.tokenCount)) * 100).toFixed(2))
-        : null,
-    floorChange: {
-      "1day": col.floorSaleChange?.["1day"] ?? null,
-      "7day": col.floorSaleChange?.["7day"] ?? null,
-      "30day": col.floorSaleChange?.["30day"] ?? null,
-    },
+    totalSupply: contractResp.totalSupply ? parseInt(contractResp.totalSupply) : null,
+    holderCount,
     ethPriceUsd: ethPrice,
+    source: "alchemy",
     cachedFor: "30s",
     timestamp: new Date().toISOString(),
   };
@@ -143,73 +136,78 @@ async function fetchCollectionData(address: string, chain: string) {
   return result;
 }
 
+// ── Collection-wide trait frequency (for rarity scoring) ───────────────
+// Alchemy doesn't provide a precomputed rarity rank like Reservoir did --
+// this computes a standard trait-rarity score (sum of 1/frequency per trait)
+// from Alchemy's attribute summary. No exact numeric rank across the full
+// collection (would require scoring every token), but real, live frequency
+// data -- not a stub. Cached longer since trait distribution rarely changes.
+const ATTRIBUTE_SUMMARY_CACHE_TTL = 600_000; // 10 minutes
+
+async function fetchAttributeSummary(address: string, chain: string): Promise<Record<string, Record<string, number>>> {
+  const cacheKey = `attrsummary_${chain}_${address}`;
+  const cached = getCached<any>(cacheKey, ATTRIBUTE_SUMMARY_CACHE_TTL);
+  if (cached) return cached;
+
+  const key = getAlchemyKey();
+  const baseUrl = getBaseUrl(chain);
+  const resp = await fetchAlchemy(baseUrl, `/${key}/summarizeNFTAttributes?contractAddress=${address}`);
+  const summary = resp.summary || {};
+  setCache(cacheKey, summary);
+  return summary;
+}
+
 // ── Token rarity ───────────────────────────────────────────────────────
 async function fetchTokenRarity(address: string, tokenId: string, chain: string) {
   const cacheKey = `rarity_${chain}_${address}_${tokenId}`;
   const cached = getCached<any>(cacheKey, RARITY_CACHE_TTL);
   if (cached) return cached;
 
+  const key = getAlchemyKey();
   const baseUrl = getBaseUrl(chain);
-  const [tokenResp, ethPrice] = await Promise.all([
-    fetchReservoir(baseUrl, `/tokens/v7?tokens=${address}:${tokenId}&includeAttributes=true`),
+  const [tokenResp, attrSummary, ethPrice] = await Promise.all([
+    fetchAlchemy(baseUrl, `/${key}/getNFTMetadata?contractAddress=${address}&tokenId=${tokenId}&refreshCache=false`),
+    fetchAttributeSummary(address, chain).catch(() => ({})),
     fetchEthPrice(),
   ]);
 
-  const tokens = tokenResp.tokens || [];
-  if (tokens.length === 0) {
+  if (!tokenResp || !tokenResp.tokenId) {
     throw new Error(`Token not found: ${address}:${tokenId} on ${chain}`);
   }
 
-  const tok = tokens[0];
-  const token = tok.token || tok;
-  const market = tok.market || {};
+  const totalSupply = tokenResp.contract?.totalSupply ? parseInt(tokenResp.contract.totalSupply) : null;
+  const rawAttributes: { trait_type?: string; value?: string | number }[] =
+    tokenResp.raw?.metadata?.attributes || [];
 
-  const attributes = (token.attributes || []).map((attr: any) => ({
-    trait: attr.key,
-    value: attr.value,
-    tokenCount: attr.tokenCount ? parseInt(attr.tokenCount) : null,
-    rarity: attr.tokenCount && token.collection?.tokenCount
-      ? parseFloat(
-          ((parseInt(attr.tokenCount) / parseInt(token.collection.tokenCount)) * 100).toFixed(2)
-        )
-      : null,
-    floorPrice: attr.floorAskPrice
-      ? {
-          eth: attr.floorAskPrice,
-          usd: ethPrice ? parseFloat((attr.floorAskPrice * ethPrice).toFixed(2)) : null,
-        }
-      : null,
-  }));
+  let rarityScore = 0;
+  const attributes = rawAttributes.map((attr) => {
+    const traitType = String(attr.trait_type ?? "unknown");
+    const value = String(attr.value ?? "");
+    const frequency = attrSummary[traitType]?.[value] ?? null;
+    const rarityPercent = frequency && totalSupply ? parseFloat(((frequency / totalSupply) * 100).toFixed(2)) : null;
+    if (frequency) rarityScore += 1 / frequency;
+    return {
+      trait: traitType,
+      value,
+      tokenCount: frequency,
+      rarity: rarityPercent,
+    };
+  });
 
   const result = {
-    collection: token.collection?.name || address,
+    collection: tokenResp.contract?.name || address,
     contractAddress: address,
     tokenId,
     chain,
-    name: token.name || `#${tokenId}`,
-    image: token.image || token.imageSmall || null,
-    rarityRank: token.rarityRank ?? null,
-    rarityScore: token.rarityScore ? parseFloat(parseFloat(token.rarityScore).toFixed(4)) : null,
-    totalSupply: token.collection?.tokenCount ? parseInt(token.collection.tokenCount) : null,
-    owner: token.owner || null,
-    lastSale: market.lastBuy?.value
-      ? {
-          eth: market.lastBuy.value,
-          usd: ethPrice ? parseFloat((market.lastBuy.value * ethPrice).toFixed(2)) : null,
-          timestamp: market.lastBuy.timestamp || null,
-        }
-      : null,
-    currentAsk: market.floorAsk?.price?.amount?.native
-      ? {
-          eth: market.floorAsk.price.amount.native,
-          usd: ethPrice
-            ? parseFloat((market.floorAsk.price.amount.native * ethPrice).toFixed(2))
-            : null,
-        }
-      : null,
+    name: tokenResp.name || tokenResp.raw?.metadata?.name || `#${tokenId}`,
+    image: tokenResp.image?.originalUrl || tokenResp.image?.cachedUrl || null,
+    rarityScore: rarityScore > 0 ? parseFloat(rarityScore.toFixed(4)) : null,
+    totalSupply,
     attributes,
     attributeCount: attributes.length,
     ethPriceUsd: ethPrice,
+    source: "alchemy",
+    note: "rarityScore is a live trait-frequency score (sum of 1/frequency per trait). No global numeric rank is computed (would require scoring the full collection).",
     cachedFor: "60s",
     timestamp: new Date().toISOString(),
   };
@@ -236,7 +234,7 @@ export function registerRoutes(app: Hono) {
       );
     }
 
-    if (!RESERVOIR_URLS[chain.toLowerCase()]) {
+    if (!ALCHEMY_URLS[chain.toLowerCase()]) {
       return c.json(
         { error: `Unsupported chain: ${chain}`, supportedChains: ["ethereum", "base"] },
         400
@@ -268,7 +266,7 @@ export function registerRoutes(app: Hono) {
       );
     }
 
-    if (!RESERVOIR_URLS[chain.toLowerCase()]) {
+    if (!ALCHEMY_URLS[chain.toLowerCase()]) {
       return c.json(
         { error: `Unsupported chain: ${chain}`, supportedChains: ["ethereum", "base"] },
         400

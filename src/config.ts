@@ -3,7 +3,7 @@ import type { ApiConfig } from "./shared";
 export const API_CONFIG: ApiConfig = {
   name: "nft-floor",
   slug: "nft-floor",
-  description: "NFT collection floor price, volume, holders, rarity data. Ethereum and Base via Reservoir.",
+  description: "NFT collection floor price, volume, holders, rarity data. Ethereum and Base via Alchemy.",
   version: "1.0.0",
   routes: [
     {
@@ -12,7 +12,7 @@ export const API_CONFIG: ApiConfig = {
       price: "$0.005",
       description: "Get NFT collection floor price, volume, and stats",
       toolName: "nft_get_collection_data",
-      toolDescription: `Use this when you need NFT collection floor price, volume, or holder data. Returns comprehensive collection stats from Reservoir for Ethereum and Base NFTs.
+      toolDescription: `Use this when you need NFT collection floor price, volume, or holder data. Returns comprehensive collection stats from Alchemy for Ethereum and Base NFTs.
 
 1. floorPrice: current floor price in ETH and USD
 2. volume24h: 24-hour trading volume in ETH and USD
@@ -85,7 +85,7 @@ Do NOT use for individual token rarity -- use nft_get_token_rarity. Do NOT use f
       price: "$0.005",
       description: "Get NFT collection floor price, volume, and stats (POST variant)",
       toolName: "nft_get_collection_data",
-      toolDescription: `Use this when you need NFT collection floor price, volume, or holder data. Returns comprehensive collection stats from Reservoir for Ethereum and Base NFTs. POST variant of nft_get_collection_data -- same params passed as JSON body instead of query string.
+      toolDescription: `Use this when you need NFT collection floor price, volume, or holder data. Returns comprehensive collection stats from Alchemy for Ethereum and Base NFTs. POST variant of nft_get_collection_data -- same params passed as JSON body instead of query string.
 
 1. floorPrice: current floor price in ETH and USD
 2. volume24h: 24-hour trading volume in ETH and USD
