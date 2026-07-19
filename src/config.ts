@@ -9,7 +9,7 @@ export const API_CONFIG: ApiConfig = {
     {
       method: "GET",
       path: "/api/collection",
-      price: "$0.005",
+      price: "$0.012",
       description: "Get NFT collection floor price, volume, and stats",
       toolName: "nft_get_collection_data",
       toolDescription: `Use this when you need NFT collection floor price, volume, or holder data. Returns comprehensive collection stats from Alchemy for Ethereum and Base NFTs.
@@ -82,7 +82,7 @@ Do NOT use for individual token rarity -- use nft_get_token_rarity. Do NOT use f
     {
       method: "POST",
       path: "/api/collection",
-      price: "$0.005",
+      price: "$0.012",
       description: "Get NFT collection floor price, volume, and stats (POST variant)",
       toolName: "nft_get_collection_data",
       toolDescription: `Use this when you need NFT collection floor price, volume, or holder data. Returns comprehensive collection stats from Alchemy for Ethereum and Base NFTs. POST variant of nft_get_collection_data -- same params passed as JSON body instead of query string.
@@ -155,7 +155,7 @@ Do NOT use for individual token rarity -- use nft_get_token_rarity. Do NOT use f
     {
       method: "GET",
       path: "/api/rarity",
-      price: "$0.003",
+      price: "$0.008",
       description: "Get NFT token rarity rank, score, and trait floor prices",
       toolName: "nft_get_token_rarity",
       toolDescription: `Use this when you need rarity data for a specific NFT token. Returns rarity rank, score, attributes, and trait-level floor prices for valuation.
@@ -223,7 +223,7 @@ Do NOT use for collection-level stats -- use nft_get_collection_data. Do NOT use
     {
       method: "POST",
       path: "/api/rarity",
-      price: "$0.003",
+      price: "$0.008",
       description: "Get NFT token rarity rank, score, and trait floor prices (POST variant)",
       toolName: "nft_get_token_rarity",
       toolDescription: `Use this when you need rarity data for a specific NFT token. Returns rarity rank, score, attributes, and trait-level floor prices for valuation. POST variant of nft_get_token_rarity -- same params passed as JSON body instead of query string.
